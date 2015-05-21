@@ -1007,7 +1007,7 @@ void sor_coupled(image_t *du, image_t *dv, const image_t *a11, const image_t *a1
   image_delete(A11); image_delete(A12); image_delete(A22);
 }
 
-void sor_coupled_blocked_4(image_t *du, image_t *dv, const image_t *a11, const image_t *a12, const image_t *a22, const image_t *b1, const image_t *b2, const image_t *dpsis_horiz, const image_t *dpsis_vert, int iterations, float omega)
+void sor_coupled_blocked_1x4(image_t *du, image_t *dv, const image_t *a11, const image_t *a12, const image_t *a22, const image_t *b1, const image_t *b2, const image_t *dpsis_horiz, const image_t *dpsis_vert, int iterations, float omega)
 {
     // Fall back to standard solver in case of trivial cases
     if(du->width < 2 || du->height < 2 || iterations < 1)
@@ -1219,6 +1219,82 @@ void sor_coupled_blocked_4(image_t *du, image_t *dv, const image_t *a11, const i
         b1_ptr = b1->data; b2_ptr = b2->data;
         dpsis_horiz_ptr = dpsis_horiz->data; dpsis_vert_ptr = dpsis_vert->data;
 
+
+        for (j = 0; j < du->height; ++j) {
+            sigma_u = dpsis_horiz_ptr[0]*du_ptr[1];
+            sigma_v = dpsis_horiz_ptr[0]*dv_ptr[1];
+            if(j != 0){
+                sigma_u += dpsis_vert_ptr[stride_]*du_ptr[stride_];
+                sigma_v += dpsis_vert_ptr[stride_]*dv_ptr[stride_];
+            }
+
+            if(j != du->height){
+                sigma_u += dpsis_vert_ptr[0]*du_ptr[stride];
+                sigma_v += dpsis_vert_ptr[0]*dv_ptr[stride];
+            }
+
+            B1 = b1_ptr[0]+sigma_u;
+            B2 = b2_ptr[0]+sigma_v;
+            du_ptr[0] += omega*( A11_ptr[0]*B1 + A12_ptr[0]*B2 - du_ptr[0] );
+            dv_ptr[0] += omega*( A12_ptr[0]*B1 + A22_ptr[0]*B2 - dv_ptr[0] );
+            du_ptr++; dv_ptr++;
+            A11_ptr++; A12_ptr++; A22_ptr++;
+            b1_ptr++; b2_ptr++;
+            dpsis_horiz_ptr++; dpsis_vert_ptr++;
+
+
+            // There is no point in unrolling here. As each item depends exactly on its horizontal neighbor
+            // ILP is impossible
+            for(i = 1; i < i_bound; i+=1){
+                sigma_u_1 = dpsis_horiz_ptr[-1]*du_ptr[-1] + dpsis_horiz_ptr[0]*du_ptr[1];
+                sigma_v_1 = dpsis_horiz_ptr[-1]*dv_ptr[-1] + dpsis_horiz_ptr[0]*dv_ptr[1];
+
+                if(j != 0){
+                    sigma_u += dpsis_vert_ptr[stride_]*du_ptr[stride_];
+                    sigma_v += dpsis_vert_ptr[stride_]*dv_ptr[stride_];
+                }
+
+                if(j != du->height){
+                    sigma_u += dpsis_vert_ptr[0]*du_ptr[stride];
+                    sigma_v += dpsis_vert_ptr[0]*dv_ptr[stride];
+                }
+
+                B1 = b1_ptr[0]+sigma_u_1;
+                B2 = b2_ptr[0]+sigma_v_1;
+                du_ptr[0] += omega*( A11_ptr[0]*B1 + A12_ptr[0]*B2 - du_ptr[0] );
+                dv_ptr[0] += omega*( A12_ptr[0]*B1 + A22_ptr[0]*B2 - dv_ptr[0] );
+
+                du_ptr++; dv_ptr++;
+                A11_ptr++; A12_ptr++; A22_ptr++;
+                b1_ptr++; b2_ptr++;
+                dpsis_horiz_ptr++; dpsis_vert_ptr++;
+
+            }
+
+            // right column
+            sigma_u = dpsis_horiz_ptr[-1]*du_ptr[-1];
+            sigma_v = dpsis_horiz_ptr[-1]*dv_ptr[-1];
+            if(j != 0){
+                sigma_u += dpsis_vert_ptr[stride_]*du_ptr[stride_];
+                sigma_v += dpsis_vert_ptr[stride_]*dv_ptr[stride_];
+            }
+
+            if(j != du->height){
+                sigma_u += dpsis_vert_ptr[0]*du_ptr[stride];
+                sigma_v += dpsis_vert_ptr[0]*dv_ptr[stride];
+            }
+
+            B1 = b1_ptr[0]+sigma_u;
+            B2 = b2_ptr[0]+sigma_v;
+            du_ptr[0] += omega*( A11_ptr[0]*B1 + A12_ptr[0]*B2 - du_ptr[0] );
+            dv_ptr[0] += omega*( A12_ptr[0]*B1 + A22_ptr[0]*B2 - dv_ptr[0] );
+
+            // increment pointer
+            du_ptr += new_line_incr; dv_ptr += new_line_incr;
+            A11_ptr += new_line_incr; A12_ptr += new_line_incr; A22_ptr += new_line_incr;
+            b1_ptr += new_line_incr; b2_ptr += new_line_incr;
+            dpsis_horiz_ptr += new_line_incr; dpsis_vert_ptr += new_line_incr;
+        }
 
 
 
