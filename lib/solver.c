@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <FreeImage.h>
+#include <stdbool.h>
 
 #include "image.h"
 #include "solver.h"
@@ -1023,6 +1025,8 @@ void sor_coupled_blocked_1x4(image_t *du, image_t *dv, const image_t *a11, const
     int stride_2 = stride_ + 2;
     int stride_3 = stride_ + 3;
 
+
+
     float *du_ptr = du->data, *dv_ptr = dv->data;
     float *a11_ptr = a11->data, *a12_ptr = a12->data, *a22_ptr = a22->data;
     float *b1_ptr = b1->data, *b2_ptr = b2->data;
@@ -1038,18 +1042,18 @@ void sor_coupled_blocked_1x4(image_t *du, image_t *dv, const image_t *a11, const
 
     float sum_dpsis, sigma_u, sigma_v, B1, B2, det;
     float sum_dpsis_1, sum_dpsis_2, sum_dpsis_3, sum_dpsis_4;
-    float sigma_u_1, sigma_u_2, sigma_u_3, sigma_u_4;
-    float sigma_v_1, sigma_v_2, sigma_v_3, sigma_v_4;
+    // float sigma_u_1, sigma_u_2, sigma_u_3, sigma_u_4;
+    // float sigma_v_1, sigma_v_2, sigma_v_3, sigma_v_4;
 
     // Should be able to hold 3 blocks simultaneously.
     int bsize = 4;
-    int npad_w = (du->width - 2) % bsize;
+    // int npad_w = (du->width - 2) % bsize;
     int niter_w = (du->width - 2) / bsize;
-    int npad_h = (du->height - 2) % bsize;
-    int niter_h = (du->height - 2) / bsize;
+    // int npad_h = (du->height - 2) % bsize;
+    // int niter_h = (du->height - 2) / bsize;
 
     int i_bound = bsize * niter_w + 1;
-    int j_bound = bsize * niter_h + 1;
+    // int j_bound = bsize * niter_h + 1;
 
     int new_line_incr = du->stride - du->width + 1;
 
@@ -1183,7 +1187,7 @@ void sor_coupled_blocked_1x4(image_t *du, image_t *dv, const image_t *a11, const
             A22_ptr[0] = A22_ / det;
             A12_ptr[0] = A12_ / det;
 
-            dpsis_horiz_ptr++; dpsis_vert_ptr;
+            dpsis_horiz_ptr++; dpsis_vert_ptr++;
             A11_ptr++; A12_ptr++; A22_ptr++;
             i++;
         }
@@ -1245,9 +1249,9 @@ void sor_coupled_blocked_1x4(image_t *du, image_t *dv, const image_t *a11, const
 
             // There is no point in unrolling here. As each item depends exactly on its horizontal neighbor
             // ILP is impossible
-            for(i = 1; i < i_bound; i+=1){
-                sigma_u_1 = dpsis_horiz_ptr[-1]*du_ptr[-1] + dpsis_horiz_ptr[0]*du_ptr[1];
-                sigma_v_1 = dpsis_horiz_ptr[-1]*dv_ptr[-1] + dpsis_horiz_ptr[0]*dv_ptr[1];
+            for(i = 1; i < du->width - 1; i+=1){
+                sigma_u = dpsis_horiz_ptr[-1]*du_ptr[-1] + dpsis_horiz_ptr[0]*du_ptr[1];
+                sigma_v = dpsis_horiz_ptr[-1]*dv_ptr[-1] + dpsis_horiz_ptr[0]*dv_ptr[1];
 
                 if(j != 0){
                     sigma_u += dpsis_vert_ptr[stride_]*du_ptr[stride_];
@@ -1259,8 +1263,8 @@ void sor_coupled_blocked_1x4(image_t *du, image_t *dv, const image_t *a11, const
                     sigma_v += dpsis_vert_ptr[0]*dv_ptr[stride];
                 }
 
-                B1 = b1_ptr[0]+sigma_u_1;
-                B2 = b2_ptr[0]+sigma_v_1;
+                B1 = b1_ptr[0]+sigma_u;
+                B2 = b2_ptr[0]+sigma_v;
                 du_ptr[0] += omega*( A11_ptr[0]*B1 + A12_ptr[0]*B2 - du_ptr[0] );
                 dv_ptr[0] += omega*( A12_ptr[0]*B1 + A22_ptr[0]*B2 - dv_ptr[0] );
 
@@ -1295,6 +1299,333 @@ void sor_coupled_blocked_1x4(image_t *du, image_t *dv, const image_t *a11, const
             b1_ptr += new_line_incr; b2_ptr += new_line_incr;
             dpsis_horiz_ptr += new_line_incr; dpsis_vert_ptr += new_line_incr;
         }
+
+
+
+    }
+
+
+}
+
+void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const image_t *a12, const image_t *a22, const image_t *b1, const image_t *b2, const image_t *dpsis_horiz, const image_t *dpsis_vert, int iterations, float omega)
+{
+    // Fall back to standard solver in case of trivial cases
+    if(du->width < 2 || du->height < 2 || iterations < 1)
+    {
+        sor_coupled_slow_but_readable(du,dv,a11,a12,a22,b1,b2,dpsis_horiz,dpsis_vert,iterations, omega);
+        return;
+    }
+
+    int i, j, iter;
+    int stride = du->stride;
+    int stride_ = -stride;
+    int stride_1 = stride_ + 1;
+    int stride_2 = stride_ + 2;
+    int stride_3 = stride_ + 3;
+
+
+
+    float *du_ptr = du->data, *dv_ptr = dv->data;
+    float *a11_ptr = a11->data, *a12_ptr = a12->data, *a22_ptr = a22->data;
+    float *b1_ptr = b1->data, *b2_ptr = b2->data;
+    float *dpsis_horiz_ptr = dpsis_horiz->data, *dpsis_vert_ptr = dpsis_vert->data;
+
+    // Typical exchage memory for speed
+    image_t *A11 = image_new(du->width,du->height);
+    image_t *A22 = image_new(du->width,du->height);
+    image_t *A12 = image_new(du->width,du->height);
+
+    float *A11_ptr = A11->data, *A12_ptr = A12->data, *A22_ptr = A22->data;
+
+
+    float sum_dpsis, sigma_u, sigma_v, B1, B2, det;
+    float sum_dpsis_1, sum_dpsis_2, sum_dpsis_3, sum_dpsis_4;
+    // float sigma_u_1, sigma_u_2, sigma_u_3, sigma_u_4;
+    // float sigma_v_1, sigma_v_2, sigma_v_3, sigma_v_4;
+
+    // Should be able to hold 3 blocks simultaneously.
+    int bsize = 4;
+    // int npad_w = (du->width - 2) % bsize;
+    int niter_w = (du->width - 2) / bsize;
+    // int npad_h = (du->height - 2) % bsize;
+    // int niter_h = (du->height - 2) / bsize;
+
+    int i_bound = bsize * niter_w + 1;
+    // int j_bound = bsize * niter_h + 1;
+
+    int new_line_incr = du->stride - du->width + 1;
+
+    float A11_1, A11_2, A11_3, A11_4, A11_;
+    float A12_1, A12_2, A12_3, A12_4, A12_;
+    float A22_1, A22_2, A22_3, A22_4, A22_;
+
+    for (j = 0; j < du->height; ++j) {
+
+        // Left cell
+        sum_dpsis = dpsis_horiz_ptr[0];
+
+        if(j != 0)
+            sum_dpsis += dpsis_vert_ptr[stride_];
+        if (j!= du->height)
+            sum_dpsis += dpsis_vert_ptr[0];
+
+        A22_ = a11_ptr[0]+sum_dpsis;
+        A11_ = a22_ptr[0]+sum_dpsis;
+        A12_ = -a12_ptr[0];
+
+        det = A11_*A22_ - A12_*A12_;
+
+        A11_ptr[0] = A11_ / det;
+        A22_ptr[0] = A22_ / det;
+        A12_ptr[0] = A12_ / det;
+
+        dpsis_horiz_ptr++; dpsis_vert_ptr++;
+        A11_ptr++; A12_ptr++; A22_ptr++;
+
+        // first row
+        for (i = 1;  i < i_bound; i+=4) {
+            // Column 1
+            sum_dpsis_1 = dpsis_horiz_ptr[-1] + dpsis_horiz_ptr[0];
+
+            if(j != 0)
+                sum_dpsis_1 += dpsis_vert_ptr[stride_];
+            if (j!= du->height)
+                sum_dpsis_1 += dpsis_vert_ptr[0];
+
+            A22_1 = a11_ptr[0]+sum_dpsis_1;
+            A11_1 = a22_ptr[0]+sum_dpsis_1;
+            A12_1 = -a12_ptr[0];
+
+            det = A11_1*A22_1 - A12_1*A12_1;
+
+            A11_ptr[0] = A11_1 / det;
+            A22_ptr[0] = A22_1 / det;
+            A12_ptr[0] = A12_1 / det;
+
+            // Column 2
+            sum_dpsis_2 = dpsis_horiz_ptr[0] + dpsis_horiz_ptr[1];
+
+            if(j != 0)
+                sum_dpsis_2 += dpsis_vert_ptr[stride_1];
+            if (j!= du->height)
+                sum_dpsis_2 += dpsis_vert_ptr[1];
+
+            A22_2 = a11_ptr[1]+sum_dpsis_2;
+            A11_2 = a22_ptr[1]+sum_dpsis_2;
+            A12_2 = -a12_ptr[1];
+
+            det = A11_2*A22_2 - A12_2*A12_2;
+
+            A11_ptr[0] = A11_2 / det;
+            A22_ptr[0] = A22_2 / det;
+            A12_ptr[0] = A12_2 / det;
+
+            // Column 3
+            sum_dpsis_3 = dpsis_horiz_ptr[1] + dpsis_horiz_ptr[2];
+
+            if(j != 0)
+                sum_dpsis_3 += dpsis_vert_ptr[stride_2];
+            if (j!= du->height)
+                sum_dpsis_3 += dpsis_vert_ptr[2];
+
+            A22_3 = a11_ptr[2]+sum_dpsis_3;
+            A11_3 = a22_ptr[2]+sum_dpsis_3;
+            A12_3 = -a12_ptr[2];
+
+            det = A11_3*A22_3 - A12_3*A12_3;
+
+            A11_ptr[2] = A11_3 / det;
+            A22_ptr[2] = A22_3 / det;
+            A12_ptr[2] = A12_3 / det;
+
+            // Column 4
+            sum_dpsis_4 = dpsis_horiz_ptr[2] + dpsis_horiz_ptr[3];
+
+            if(j != 0)
+                sum_dpsis_4 += dpsis_vert_ptr[stride_3];
+            if (j!= du->height)
+                sum_dpsis_4 += dpsis_vert_ptr[3];
+
+            A22_4 = a11_ptr[3]+sum_dpsis_4;
+            A11_4 = a22_ptr[3]+sum_dpsis_4;
+            A12_4 = -a12_ptr[3];
+
+            det = A11_4*A22_4 - A12_4*A12_4;
+
+            A11_ptr[3] = A11_4 / det;
+            A22_ptr[3] = A22_4 / det;
+            A12_ptr[3] = A12_4 / det;
+
+            dpsis_horiz_ptr+=4; dpsis_vert_ptr+=4;
+            A11_ptr+=4; A12_ptr+=4; A22_ptr+=4;
+        }
+
+        // Cope with whatever that's left
+        while(i < du->width - 1)
+        {
+            sum_dpsis = dpsis_horiz_ptr[-1] + dpsis_horiz_ptr[0];
+
+            if(j != 0)
+                sum_dpsis += dpsis_vert_ptr[stride_];
+            if (j!= du->height)
+                sum_dpsis += dpsis_vert_ptr[0];
+
+            A22_ = a11_ptr[0]+sum_dpsis;
+            A11_ = a22_ptr[0]+sum_dpsis;
+            A12_ = -a12_ptr[0];
+
+            det = A11_*A22_ - A12_*A12_;
+
+            A11_ptr[0] = A11_ / det;
+            A22_ptr[0] = A22_ / det;
+            A12_ptr[0] = A12_ / det;
+
+            dpsis_horiz_ptr++; dpsis_vert_ptr++;
+            A11_ptr++; A12_ptr++; A22_ptr++;
+            i++;
+        }
+
+        // upperright corner
+        sum_dpsis = dpsis_horiz_ptr[-1];
+
+        if(j != 0)
+            sum_dpsis += dpsis_vert_ptr[stride_];
+        if (j!= du->height)
+            sum_dpsis += dpsis_vert_ptr[0];
+
+        A22_ = a11_ptr[0]+sum_dpsis;
+        A11_ = a22_ptr[0]+sum_dpsis;
+        A12_ = -a12_ptr[0];
+
+        det = A11_*A22_ - A12_*A12_;
+
+        A11_ptr[0] = A11_ / det;
+        A22_ptr[0] = A22_ / det;
+        A12_ptr[0] = A12_ / det;
+
+        dpsis_horiz_ptr += new_line_incr;
+        dpsis_vert_ptr += new_line_incr;
+        A11_ptr+=new_line_incr; A12_ptr+=new_line_incr; A22_ptr+=new_line_incr;
+    }
+
+    // Main iterations
+    // Loop over 2x2 blocks. Special cases: left/right column, top/bottom row, possible one more extra row/column.
+    int block_line_incr = du->stride + (du->stride - du->width + 1);
+    int j_block_iter = (du->height - 2) / 2;
+    int i_block_iter = (du->height - 2) / 2;
+    bool odd_row = du->height % 2? true:false;
+
+    for(iter = 0; iter < iterations; ++iter)
+    {
+        // set pointer to the beginning
+        du_ptr = du->data; dv_ptr = dv->data;
+        A11_ptr = A11->data; A12_ptr = A12->data; A22_ptr = A22->data;
+        b1_ptr = b1->data; b2_ptr = b2->data;
+        dpsis_horiz_ptr = dpsis_horiz->data; dpsis_vert_ptr = dpsis_vert->data;
+
+        // upperleft corner
+        sigma_u = dpsis_horiz_ptr[0]*du_ptr[1];
+        sigma_v = dpsis_horiz_ptr[0]*dv_ptr[1];
+        sigma_u += dpsis_vert_ptr[0]*du_ptr[stride];
+        sigma_v += dpsis_vert_ptr[0]*dv_ptr[stride];
+        B1 = b1_ptr[0]+sigma_u;
+        B2 = b2_ptr[0]+sigma_v;
+        du_ptr[0] += omega*( A11_ptr[0]*B1 + A12_ptr[0]*B2 - du_ptr[0] );
+        dv_ptr[0] += omega*( A12_ptr[0]*B1 + A22_ptr[0]*B2 - dv_ptr[0] );
+
+        du_ptr++; dv_ptr++;
+        A11_ptr++; A12_ptr++; A22_ptr++;
+        b1_ptr++; b2_ptr++;
+        dpsis_horiz_ptr++; dpsis_vert_ptr++;
+
+        // middle of the first line
+        for( i = 1; i < du->width - 1; ++ i)
+        {
+            sigma_u = dpsis_horiz_ptr[-1]*du_ptr[-1] + dpsis_horiz_ptr[0]*du_ptr[1];
+            sigma_v = dpsis_horiz_ptr[-1]*dv_ptr[-1] + dpsis_horiz_ptr[0]*dv_ptr[1];
+            sigma_u += dpsis_vert_ptr[0]*du_ptr[stride];
+            sigma_v += dpsis_vert_ptr[0]*dv_ptr[stride];
+
+            B1 = b1_ptr[0]+sigma_u;
+            B2 = b2_ptr[0]+sigma_v;
+            du_ptr[0] += omega*( A11_ptr[0]*B1 + A12_ptr[0]*B2 - du_ptr[0] );
+            dv_ptr[0] += omega*( A12_ptr[0]*B1 + A22_ptr[0]*B2 - dv_ptr[0] );
+
+            du_ptr++; dv_ptr++;
+            A11_ptr++; A12_ptr++; A22_ptr++;
+            b1_ptr++; b2_ptr++;
+            dpsis_horiz_ptr++; dpsis_vert_ptr++;
+        }
+
+        // rightupper corner
+        sigma_u = dpsis_horiz_ptr[-1]*du_ptr[-1];
+        sigma_v = dpsis_horiz_ptr[-1]*dv_ptr[-1];
+        sigma_u += dpsis_vert_ptr[0]*du_ptr[stride];
+        sigma_v += dpsis_vert_ptr[0]*dv_ptr[stride];
+        B1 = b1_ptr[0]+sigma_u;
+        B2 = b2_ptr[0]+sigma_v;
+        du_ptr[0] += omega*( A11_ptr[0]*B1 + A12_ptr[0]*B2 - du_ptr[0] );
+        dv_ptr[0] += omega*( A12_ptr[0]*B1 + A22_ptr[0]*B2 - dv_ptr[0] );
+
+        //send the pointer to next line
+        dpsis_horiz_ptr += new_line_incr;
+        dpsis_vert_ptr += new_line_incr;
+        A11_ptr+=new_line_incr; A12_ptr+=new_line_incr; A22_ptr+=new_line_incr;
+
+        for(j = 1; j < j_block_iter; ++j)
+        {
+            /*    4 5
+             * 6 |0 1| 10
+             * 7 |2 3| 11  -> first compute 1, then compute 2 & 3 independently, then computer 4
+             *    8 9
+             * Somehow we need to resolve dependence on 1 & 4 manually.
+             * */
+
+            for( i = 1; i < i_block_iter; ++i)
+            {
+                // 1
+                float dp_vert_0 = dpsis_vert_ptr[0];
+                float dp_vert_1 = dpsis_vert_ptr[1];
+                float dp_vert_2 = dpsis_vert_ptr[2];
+                float dp_vert_3 = dpsis_vert_ptr[3];
+                float dp_vert_4 = dpsis_vert_ptr[stride_];
+                float dp_vert_5 = dpsis_vert_ptr[stride_ + 1];
+                float dp_vert_8 = dpsis_vert_ptr[stride + stride];
+                float dp_vert_9 = dpsis_vert_ptr[stride + stride + 1];
+
+
+                float dp_horiz_0 = dpsis_horiz_ptr[0];
+                float dp_horiz_1 = dpsis_horiz_ptr[1];
+                float dp_horiz_2 = dpsis_horiz_ptr[2];
+                float dp_horiz_3 = dpsis_horiz_ptr[3];
+                float dp_horiz_6 = dpsis_horiz_ptr[-1];
+                float dp_horiz_7 = dpsis_horiz_ptr[stride - 1];
+                float dp_horiz_10 = dpsis_horiz_ptr[2];
+                float dp_horiz_11 = dpsis_horiz_ptr[stride + 2];
+
+                
+
+                sigma_u = dpsis_horiz_ptr[-1]*du_ptr[-1];
+                sigma_v = dpsis_horiz_ptr[-1]*dv_ptr[-1];
+                sigma_u += dpsis_horiz_ptr[0]*du_ptr[1];
+                sigma_v += dpsis_horiz_ptr[0]*dv_ptr[1];
+                sigma_u += dpsis_vert_ptr[stride_]*du_ptr[stride_];
+                sigma_v += dpsis_vert_ptr[stride_]*dv_ptr[stride_];
+                sigma_u += dpsis_vert_ptr[0]*du_ptr[stride];
+                sigma_v += dpsis_vert_ptr[0]*dv_ptr[stride];
+
+                B1 = b1_ptr[0]+sigma_u;
+                B2 = b2_ptr[0]+sigma_v;
+                du_ptr[0] += omega*( A11_ptr[0]*B1 + A12_ptr[0]*B2 - du_ptr[0] );
+                dv_ptr[0] += omega*( A12_ptr[0]*B1 + A22_ptr[0]*B2 - dv_ptr[0] );
+
+
+
+            }
+        }
+
+
+
 
 
 
