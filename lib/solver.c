@@ -1603,7 +1603,7 @@ void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const
                 float dp_horiz_10 = dpsis_horiz_ptr[2];
                 float dp_horiz_11 = dpsis_horiz_ptr[stride + 2];
 
-                
+
 
                 sigma_u = dpsis_horiz_ptr[-1]*du_ptr[-1];
                 sigma_v = dpsis_horiz_ptr[-1]*dv_ptr[-1];
