@@ -64,7 +64,7 @@ void compute_one_level(image_t *wx, image_t *wy, color_image_t *im1, color_image
 	  // sor_coupled_slow_scalar_replacement(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
       
 	  // blocked SOR
-       sor_coupled(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
+      // sor_coupled(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
 
       // blocked SOR with 4 elements each row
       // sor_coupled_blocked_1x4(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
@@ -73,7 +73,7 @@ void compute_one_level(image_t *wx, image_t *wy, color_image_t *im1, color_image
       // sor_coupled_blocked_2x2(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
 
       // blocked SOR with vectorization
-      // sor_coupled_blocked_2x2_vectorization(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
+      sor_coupled_blocked_2x2_vectorization(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
 
       // update flow plus flow increment
       int i;
