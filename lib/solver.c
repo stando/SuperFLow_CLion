@@ -4,6 +4,7 @@
 //#include <FreeImage.h>
 #include <stdbool.h>
 #include <x86intrin.h>
+#include <string.h>
 #include "image.h"
 #include "solver.h"
 
@@ -206,7 +207,7 @@ the first iteration is done separately from the other to compute the inverse of 
 the loop over pixels is split in different sections: the first line, the middle lines and the last line are split
 for each line, the main for loop over columns is done 4 by 4, with the first and last one done independently
 only work if width>=2 & height>=2 & iterations>=1*/
-void sor_coupled(image_t *du, image_t *dv, const image_t *a11, const image_t *a12, const image_t *a22, const image_t *b1, const image_t *b2, const image_t *dpsis_horiz, const image_t *dpsis_vert, int iterations, float omega)
+void sor_coupled(image_t *du, image_t *dv, image_t *a11_out, image_t *a12_out, image_t* a22_out, const image_t *a11, const image_t *a12, const image_t *a22, const image_t *b1, const image_t *b2, const image_t *dpsis_horiz, const image_t *dpsis_vert, int iterations, float omega)
 {
     if(du->width<2 || du->height<2 || iterations < 1)
         sor_coupled_slow_but_readable(du,dv,a11,a12,a22,b1,b2,dpsis_horiz,dpsis_vert,iterations, omega);
@@ -257,6 +258,7 @@ void sor_coupled(image_t *du, image_t *dv, const image_t *a11, const image_t *a1
     // update du and dv
     // update pointer
 
+    int count = 0;
     // ------------ first line, first column
     sum_dpsis = dpsis_horiz_ptr[0]           + dpsis_vert_ptr[0]                    ;
     sigma_u   = dpsis_horiz_ptr[0]*du_ptr[1] + dpsis_vert_ptr[0]*du_ptr[stride] ;
@@ -278,6 +280,7 @@ void sor_coupled(image_t *du, image_t *dv, const image_t *a11, const image_t *a1
     b1_ptr++; b2_ptr++;
     dpsis_horiz_ptr++; dpsis_vert_ptr++;
 
+    count++;
     // ------------ first line, column just after the first one to have a multiple of 4
     for(ibefore = nbefore ; ibefore-- ; ) // faster than for(ibefore = 0 ; ibefore < nbefore ; ibefore--)
     {
@@ -300,10 +303,12 @@ void sor_coupled(image_t *du, image_t *dv, const image_t *a11, const image_t *a1
         A11_ptr++; A12_ptr++; A22_ptr++;
         b1_ptr++; b2_ptr++;
         dpsis_horiz_ptr++; dpsis_vert_ptr++;
+        count++;
     }
 
     // ------------ first line, other columns by 4
     for(i = ifst ; i ; i-=4)
+
     {
         // 1
         sum_dpsis = dpsis_horiz_ptr[-1]            + dpsis_horiz_ptr[0]           + dpsis_vert_ptr[0]                    ;
@@ -371,6 +376,7 @@ void sor_coupled(image_t *du, image_t *dv, const image_t *a11, const image_t *a1
         A11_ptr += 4; A12_ptr += 4; A22_ptr += 4;
         b1_ptr += 4; b2_ptr += 4;
         dpsis_horiz_ptr += 4; dpsis_vert_ptr += 4;
+        count+=4;
     }
 
     // ------------ first line, last column
@@ -394,9 +400,10 @@ void sor_coupled(image_t *du, image_t *dv, const image_t *a11, const image_t *a1
     A11_ptr += incr_line; A12_ptr += incr_line; A22_ptr += incr_line;
     b1_ptr += incr_line; b2_ptr += incr_line;
     dpsis_horiz_ptr += incr_line; dpsis_vert_ptr += incr_line;
-
+    count++;
     // ------------ line in the middle
-    for(j = jfst ; j-- ; )    // fast than for(j=1 ; j<du->height-1 ; j--)
+    //for(j = jfst ; j-- ; )    // fast than for(j=1 ; j<du->height-1 ; j--)
+    for(j=1 ; j<du->height-1 ; j++)
     {
 
         // ------------ line in the middle, first column
@@ -419,9 +426,10 @@ void sor_coupled(image_t *du, image_t *dv, const image_t *a11, const image_t *a1
         A11_ptr++; A12_ptr++; A22_ptr++;
         b1_ptr++; b2_ptr++;
         dpsis_horiz_ptr++; dpsis_vert_ptr++;
-
+        count++;
         // ------------ line in the middle, column just after the first one to have a multiple of 4
-        for(ibefore = nbefore ; ibefore-- ; ) // faster than for(ibefore = 0 ; ibefore < nbefore ; ibefore--)
+        //for(ibefore = nbefore ; ibefore-- ; ) // faster than for(ibefore = 0 ; ibefore < nbefore ; ibefore--)
+        for(ibefore = 0 ; ibefore < nbefore ; ibefore++)
         {
             sum_dpsis = dpsis_horiz_ptr[-1]            + dpsis_horiz_ptr[0]           + dpsis_vert_ptr[stride_]                     + dpsis_vert_ptr[0]                    ;
             sigma_u   = dpsis_horiz_ptr[-1]*du_ptr[-1] + dpsis_horiz_ptr[0]*du_ptr[1] + dpsis_vert_ptr[stride_]*du_ptr[stride_] + dpsis_vert_ptr[0]*du_ptr[stride] ;
@@ -442,10 +450,12 @@ void sor_coupled(image_t *du, image_t *dv, const image_t *a11, const image_t *a1
             A11_ptr++; A12_ptr++; A22_ptr++;
             b1_ptr++; b2_ptr++;
             dpsis_horiz_ptr++; dpsis_vert_ptr++;
+            count++;
         }
 
         // ------------ line in the middle, other columns by 4
-        for(i = ifst ; i ; i-=4)
+        for(i = 1; i <= ifst; i+=4)
+        //for(i = ifst ; i ; i-=4)
         {
             // 1
             sum_dpsis = dpsis_horiz_ptr[-1]            + dpsis_horiz_ptr[0]           + dpsis_vert_ptr[stride_]                     + dpsis_vert_ptr[0]                    ;
@@ -513,6 +523,7 @@ void sor_coupled(image_t *du, image_t *dv, const image_t *a11, const image_t *a1
             A11_ptr += 4; A12_ptr += 4; A22_ptr += 4;
             b1_ptr += 4; b2_ptr += 4;
             dpsis_horiz_ptr += 4; dpsis_vert_ptr += 4;
+            count+=4;
         }
 
         // ------------ line in the middle, last column
@@ -536,7 +547,7 @@ void sor_coupled(image_t *du, image_t *dv, const image_t *a11, const image_t *a1
         A11_ptr += incr_line; A12_ptr += incr_line; A22_ptr += incr_line;
         b1_ptr += incr_line; b2_ptr += incr_line;
         dpsis_horiz_ptr += incr_line; dpsis_vert_ptr += incr_line;
-
+        count++;
     }
 
     // ------------ last line, first column
@@ -559,9 +570,11 @@ void sor_coupled(image_t *du, image_t *dv, const image_t *a11, const image_t *a1
     A11_ptr++; A12_ptr++; A22_ptr++;
     b1_ptr++; b2_ptr++;
     dpsis_horiz_ptr++; dpsis_vert_ptr++;
+    count++;
 
     // ------------ last line, column just after the first one to have a multiple of 4
-    for(ibefore = nbefore ; ibefore-- ; ) // faster than for(ibefore = 0 ; ibefore < nbefore ; ibefore--)
+    //for(ibefore = nbefore ; ibefore-- ; ) // faster than for(ibefore = 0 ; ibefore < nbefore ; ibefore--)
+    for(ibefore = 0 ; ibefore < nbefore ; ibefore++)
     {
         sum_dpsis = dpsis_horiz_ptr[-1]            + dpsis_horiz_ptr[0]           + dpsis_vert_ptr[stride_]                     ;
         sigma_u   = dpsis_horiz_ptr[-1]*du_ptr[-1] + dpsis_horiz_ptr[0]*du_ptr[1] + dpsis_vert_ptr[stride_]*du_ptr[stride_] ;
@@ -582,10 +595,12 @@ void sor_coupled(image_t *du, image_t *dv, const image_t *a11, const image_t *a1
         A11_ptr++; A12_ptr++; A22_ptr++;
         b1_ptr++; b2_ptr++;
         dpsis_horiz_ptr++; dpsis_vert_ptr++;
+        count++;
     }
 
     // ------------ last line, other columns by 4
     for(i = ifst ; i ; i-=4)
+    //for(i = 1 ; i<=ifst ; i+=4)
     {
         // 1
         sum_dpsis = dpsis_horiz_ptr[-1]            + dpsis_horiz_ptr[0]           + dpsis_vert_ptr[stride_]                     ;
@@ -653,6 +668,7 @@ void sor_coupled(image_t *du, image_t *dv, const image_t *a11, const image_t *a1
         A11_ptr += 4; A12_ptr += 4; A22_ptr += 4;
         b1_ptr += 4; b2_ptr += 4;
         dpsis_horiz_ptr += 4; dpsis_vert_ptr += 4;
+        count+=4;
     }
 
     // ------------ last line, last column
@@ -670,6 +686,15 @@ void sor_coupled(image_t *du, image_t *dv, const image_t *a11, const image_t *a1
     B2 = b2_ptr[0]+sigma_v;
     du_ptr[0] += omega*( A11_ptr[0]*B1 + A12_ptr[0]*B2 - du_ptr[0] );
     dv_ptr[0] += omega*( A12_ptr[0]*B1 + A22_ptr[0]*B2 - dv_ptr[0] );
+    count++;
+
+    if(du->height*du->width != count)
+    {
+        printf("sor_coupled. should be %d loops, count %d loops.", du->width*du->height, count);
+        BRK();
+    }
+
+
     // useless to increment here
 
     // ---------------- OTHER ITERATION ----------------- //
@@ -679,6 +704,7 @@ void sor_coupled(image_t *du, image_t *dv, const image_t *a11, const image_t *a1
     // update pointer
 
     for(iter = iterations ; --iter ; ) // faster than for(iter = 1 ; iter<iterations ; iter++)
+    //for(iter = 1 ; iter<iterations ; iter++)
     {
 
         // set pointer to the beginning
@@ -703,6 +729,7 @@ void sor_coupled(image_t *du, image_t *dv, const image_t *a11, const image_t *a1
 
         // ------------ first line, column just after the first one to have a multiple of 4
         for(ibefore = nbefore ; ibefore-- ; ) // faster than for(ibefore = 0 ; ibefore < nbefore ; ibefore--)
+        //for(ibefore = 0 ; ibefore < nbefore ; ibefore++)
         {
             sigma_u   = dpsis_horiz_ptr[-1]*du_ptr[-1] + dpsis_horiz_ptr[0]*du_ptr[1] + dpsis_vert_ptr[0]*du_ptr[stride] ;
             sigma_v   = dpsis_horiz_ptr[-1]*dv_ptr[-1] + dpsis_horiz_ptr[0]*dv_ptr[1] + dpsis_vert_ptr[0]*dv_ptr[stride] ;
@@ -718,6 +745,7 @@ void sor_coupled(image_t *du, image_t *dv, const image_t *a11, const image_t *a1
 
         // ------------ first line, other columns by 4
         for(i = ifst ; i ; i-=4)
+        //for(i = 1 ; i<=ifst ; i+=4)
         {
             // 1
             sigma_u   = dpsis_horiz_ptr[-1]*du_ptr[-1] + dpsis_horiz_ptr[0]*du_ptr[1] + dpsis_vert_ptr[0]*du_ptr[stride] ;
@@ -925,11 +953,16 @@ void sor_coupled(image_t *du, image_t *dv, const image_t *a11, const image_t *a1
         dv_ptr[0] += omega*( A12_ptr[0]*B1 + A22_ptr[0]*B2 - dv_ptr[0] );
         // useless to increment here
     }
+
+    memcpy(a11_out->data, A11->data, A11->stride*A11->height*sizeof(float));
+    memcpy(a12_out->data, A12->data, A12->stride*A12->height*sizeof(float));
+    memcpy(a22_out->data, A22->data, A22->stride*A22->height*sizeof(float));
+
     // delete allocated images
     image_delete(A11); image_delete(A12); image_delete(A22);
 }
 
-void sor_coupled_blocked_1x4(image_t *du, image_t *dv, const image_t *a11, const image_t *a12, const image_t *a22, const image_t *b1, const image_t *b2, const image_t *dpsis_horiz, const image_t *dpsis_vert, int iterations, float omega)
+void sor_coupled_blocked_1x4(image_t *du, image_t *dv, image_t *a11_out, image_t *a12_out, image_t* a22_out, const image_t *a11, const image_t *a12, const image_t *a22, const image_t *b1, const image_t *b2, const image_t *dpsis_horiz, const image_t *dpsis_vert, int iterations, float omega)
 {
     // Fall back to standard solver in case of trivial cases
     if(du->width < 2 || du->height < 2 || iterations < 1)
@@ -1003,6 +1036,8 @@ void sor_coupled_blocked_1x4(image_t *du, image_t *dv, const image_t *a11, const
 
         dpsis_horiz_ptr++; dpsis_vert_ptr++;
         A11_ptr++; A12_ptr++; A22_ptr++;
+        a11_ptr++; a12_ptr++; a22_ptr++;
+
         // count++;
 
         // first row
@@ -1039,9 +1074,9 @@ void sor_coupled_blocked_1x4(image_t *du, image_t *dv, const image_t *a11, const
 
             det = A11_2*A22_2 - A12_2*A12_2;
 
-            A11_ptr[0] = A11_2 / det;
-            A22_ptr[0] = A22_2 / det;
-            A12_ptr[0] = A12_2 / det;
+            A11_ptr[1] = A11_2 / det;
+            A22_ptr[1] = A22_2 / det;
+            A12_ptr[1] = A12_2 / det;
 
             // Column 3
             sum_dpsis_3 = dpsis_horiz_ptr[1] + dpsis_horiz_ptr[2];
@@ -1081,6 +1116,7 @@ void sor_coupled_blocked_1x4(image_t *du, image_t *dv, const image_t *a11, const
 
             dpsis_horiz_ptr+=4; dpsis_vert_ptr+=4;
             A11_ptr+=4; A12_ptr+=4; A22_ptr+=4;
+            a11_ptr+=4; a12_ptr+=4; a22_ptr+=4;
             //count += 4;
         }
 
@@ -1106,6 +1142,8 @@ void sor_coupled_blocked_1x4(image_t *du, image_t *dv, const image_t *a11, const
 
             dpsis_horiz_ptr++; dpsis_vert_ptr++;
             A11_ptr++; A12_ptr++; A22_ptr++;
+            a11_ptr++; a12_ptr++; a22_ptr++;
+
             i++;
             //count++;
         }
@@ -1131,6 +1169,7 @@ void sor_coupled_blocked_1x4(image_t *du, image_t *dv, const image_t *a11, const
         dpsis_horiz_ptr += new_line_incr;
         dpsis_vert_ptr += new_line_incr;
         A11_ptr+=new_line_incr; A12_ptr+=new_line_incr; A22_ptr+=new_line_incr;
+        a11_ptr+=new_line_incr; a12_ptr+=new_line_incr; a22_ptr+=new_line_incr;
         //count++;
     }
 
@@ -1144,7 +1183,7 @@ void sor_coupled_blocked_1x4(image_t *du, image_t *dv, const image_t *a11, const
     //
     for (iter = 0; iter < iterations; ++iter) {
 
-        //count = 0;
+        int count = 0;
 
         // set pointer to the beginning
         du_ptr = du->data; dv_ptr = dv->data;
@@ -1154,6 +1193,7 @@ void sor_coupled_blocked_1x4(image_t *du, image_t *dv, const image_t *a11, const
 
 
         for (j = 0; j < du->height; ++j) {
+            // Left column
             sigma_u = dpsis_horiz_ptr[0]*du_ptr[1];
             sigma_v = dpsis_horiz_ptr[0]*dv_ptr[1];
 
@@ -1175,11 +1215,11 @@ void sor_coupled_blocked_1x4(image_t *du, image_t *dv, const image_t *a11, const
             A11_ptr++; A12_ptr++; A22_ptr++;
             b1_ptr++; b2_ptr++;
             dpsis_horiz_ptr++; dpsis_vert_ptr++;
-            //count++;
+            count++;
 
-            // There is no point in unrolling here. As each item depends exactly on its horizontal neighbor
+            // There is no point in unrolling here. As each item depends exactly on its horizontal neighbors
             // ILP is impossible
-            for(i = 1; i < du->width - 1; i+=1){
+            for(i = 1; i < du->width - 1; i++){
                 sigma_u = dpsis_horiz_ptr[-1]*du_ptr[-1] + dpsis_horiz_ptr[0]*du_ptr[1];
                 sigma_v = dpsis_horiz_ptr[-1]*dv_ptr[-1] + dpsis_horiz_ptr[0]*dv_ptr[1];
 
@@ -1202,7 +1242,7 @@ void sor_coupled_blocked_1x4(image_t *du, image_t *dv, const image_t *a11, const
                 A11_ptr++; A12_ptr++; A22_ptr++;
                 b1_ptr++; b2_ptr++;
                 dpsis_horiz_ptr++; dpsis_vert_ptr++;
-                //count++;
+                count++;
             }
 
             // right column
@@ -1228,23 +1268,25 @@ void sor_coupled_blocked_1x4(image_t *du, image_t *dv, const image_t *a11, const
             A11_ptr += new_line_incr; A12_ptr += new_line_incr; A22_ptr += new_line_incr;
             b1_ptr += new_line_incr; b2_ptr += new_line_incr;
             dpsis_horiz_ptr += new_line_incr; dpsis_vert_ptr += new_line_incr;
-            //count++;
+            count++;
         }
 
-//        if(du->height*du->width != count)
-//        {
-//            printf("should be %d loops, count %d loops.", du->width*du->height, count);
-//            BRK();
-//        }
+        if(du->height*du->width != count)
+        {
+            printf("should be %d loops, count %d loops.", du->width*du->height, count);
+            BRK();
+        }
     }
 
-
-
-
+    memcpy(a11_out->data, A11->data, A11->stride*A11->height*sizeof(float));
+    memcpy(a12_out->data, A12->data, A12->stride*A12->height*sizeof(float));
+    memcpy(a22_out->data, A22->data, A22->stride*A22->height*sizeof(float));
+    // delete allocated images
+    image_delete(A11); image_delete(A12); image_delete(A22);
 
 }
 
-void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const image_t *a12, const image_t *a22, const image_t *b1, const image_t *b2, const image_t *dpsis_horiz, const image_t *dpsis_vert, int iterations, float omega)
+void sor_coupled_blocked_2x2(image_t *du, image_t *dv, image_t *a11_out, image_t *a12_out, image_t* a22_out, const image_t *a11, const image_t *a12, const image_t *a22, const image_t *b1, const image_t *b2, const image_t *dpsis_horiz, const image_t *dpsis_vert, int iterations, float omega)
 {
     // Fall back to standard solver in case of trivial cases
     if(du->width < 2 || du->height < 2 || iterations < 1)
@@ -1259,7 +1301,6 @@ void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const
     int stride_1 = stride_ + 1;
     int stride_2 = stride_ + 2;
     int stride_3 = stride_ + 3;
-
 
 
     float *du_ptr = du->data, *dv_ptr = dv->data;
@@ -1277,8 +1318,6 @@ void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const
 
     float sum_dpsis, sigma_u, sigma_v, B1, B2, det;
     float sum_dpsis_1, sum_dpsis_2, sum_dpsis_3, sum_dpsis_4;
-    // float sigma_u_1, sigma_u_2, sigma_u_3, sigma_u_4;
-    // float sigma_v_1, sigma_v_2, sigma_v_3, sigma_v_4;
 
     // Should be able to hold 3 blocks simultaneously.
     int bsize = 4;
@@ -1318,6 +1357,7 @@ void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const
 
         dpsis_horiz_ptr++; dpsis_vert_ptr++;
         A11_ptr++; A12_ptr++; A22_ptr++;
+        a11_ptr++; a12_ptr++; a22_ptr++;
 
         // first row
         for (i = 1;  i < i_bound; i+=4) {
@@ -1353,9 +1393,9 @@ void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const
 
             det = A11_2*A22_2 - A12_2*A12_2;
 
-            A11_ptr[0] = A11_2 / det;
-            A22_ptr[0] = A22_2 / det;
-            A12_ptr[0] = A12_2 / det;
+            A11_ptr[1] = A11_2 / det;
+            A22_ptr[1] = A22_2 / det;
+            A12_ptr[1] = A12_2 / det;
 
             // Column 3
             sum_dpsis_3 = dpsis_horiz_ptr[1] + dpsis_horiz_ptr[2];
@@ -1395,6 +1435,7 @@ void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const
 
             dpsis_horiz_ptr+=4; dpsis_vert_ptr+=4;
             A11_ptr+=4; A12_ptr+=4; A22_ptr+=4;
+            a11_ptr+=4; a12_ptr+=4; a22_ptr+=4;
         }
 
         // Cope with whatever that's left
@@ -1419,6 +1460,7 @@ void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const
 
             dpsis_horiz_ptr++; dpsis_vert_ptr++;
             A11_ptr++; A12_ptr++; A22_ptr++;
+            a11_ptr++; a12_ptr++; a22_ptr++;
             i++;
         }
 
@@ -1443,6 +1485,7 @@ void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const
         dpsis_horiz_ptr += new_line_incr;
         dpsis_vert_ptr += new_line_incr;
         A11_ptr+=new_line_incr; A12_ptr+=new_line_incr; A22_ptr+=new_line_incr;
+        a11_ptr+=new_line_incr; a12_ptr+=new_line_incr; a22_ptr+=new_line_incr;
     }
 
     // Main iterations
@@ -1457,7 +1500,6 @@ void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const
     {
 
         //int count = 0;
-
         // set pointer to the beginning
         du_ptr = du->data; dv_ptr = dv->data;
         A11_ptr = A11->data; A12_ptr = A12->data; A22_ptr = A22->data;
@@ -1478,7 +1520,7 @@ void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const
         A11_ptr++; A12_ptr++; A22_ptr++;
         b1_ptr++; b2_ptr++;
         dpsis_horiz_ptr++; dpsis_vert_ptr++;
-        //count++;
+        // count++;
         // middle of the first line
         for( i = 1; i < du->width - 1; ++ i)
         {
@@ -1510,33 +1552,29 @@ void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const
         dv_ptr[0] += omega*( A12_ptr[0]*B1 + A22_ptr[0]*B2 - dv_ptr[0] );
 
         //send the pointer to next line
-        dpsis_horiz_ptr += new_line_incr;
-        dpsis_vert_ptr += new_line_incr;
+        du_ptr+=new_line_incr; dv_ptr+=new_line_incr;
+        b1_ptr+=new_line_incr; b2_ptr+=new_line_incr;
+        dpsis_horiz_ptr += new_line_incr; dpsis_vert_ptr += new_line_incr;
         A11_ptr+=new_line_incr; A12_ptr+=new_line_incr; A22_ptr+=new_line_incr;
+
         //count++;
         for(j = 0; j < j_block_iter; ++j)
         {
-            /*    4 5
-             * 6 |0 1| 10
-             * 7 |2 3| 11  -> first compute 0, then compute 1 & 2 independently, then computer 3
-             *    8 9
-             * Somehow we need to resolve dependence on 1 & 4 manually.
-             * */
 
             // First column
             sigma_u = dpsis_horiz_ptr[0]*du_ptr[1];
-            sigma_v = dpsis_horiz_ptr[0]*du_ptr[1];
+            sigma_v = dpsis_horiz_ptr[0]*dv_ptr[1];
             sigma_u += dpsis_vert_ptr[0]*du_ptr[stride] + dpsis_vert_ptr[stride_] * du_ptr[stride_];
-            sigma_v += dpsis_vert_ptr[0]*dv_ptr[stride] + dpsis_vert_ptr[stride_] * du_ptr[stride_];
+            sigma_v += dpsis_vert_ptr[0]*dv_ptr[stride] + dpsis_vert_ptr[stride_] * dv_ptr[stride_];
             B1 = b1_ptr[0]+sigma_u;
             B2 = b2_ptr[0]+sigma_v;
             du_ptr[0] += omega*( A11_ptr[0]*B1 + A12_ptr[0]*B2 - du_ptr[0] );
             dv_ptr[0] += omega*( A12_ptr[0]*B1 + A22_ptr[0]*B2 - dv_ptr[0] );
 
             sigma_u = dpsis_horiz_ptr[stride]*du_ptr[stride + 1];
-            sigma_v = dpsis_horiz_ptr[stride]*du_ptr[stride + 1];
+            sigma_v = dpsis_horiz_ptr[stride]*dv_ptr[stride + 1];
             sigma_u += dpsis_vert_ptr[stride]*du_ptr[stride + stride] + dpsis_vert_ptr[0] * du_ptr[0];
-            sigma_v += dpsis_vert_ptr[stride]*dv_ptr[stride + stride] + dpsis_vert_ptr[0] * du_ptr[0];
+            sigma_v += dpsis_vert_ptr[stride]*dv_ptr[stride + stride] + dpsis_vert_ptr[0] * dv_ptr[0];
             B1 = b1_ptr[stride]+sigma_u;
             B2 = b2_ptr[stride]+sigma_v;
             du_ptr[stride] += omega*( A11_ptr[stride]*B1 + A12_ptr[stride]*B2 - du_ptr[stride] );
@@ -1547,6 +1585,13 @@ void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const
             b1_ptr++; b2_ptr++;
             dpsis_horiz_ptr++; dpsis_vert_ptr++;
             //count+=2;
+
+            /*    4 5
+             * 6 |0 1| 10
+             * 7 |2 3| 11  -> first compute 0, then compute 1 & 2 independently, then computer 3
+             *    8 9
+             * Somehow we need to resolve dependence on 1 & 4 manually.
+             * */
 
             for( i = 0; i < i_block_iter; ++i)
             {
@@ -1577,7 +1622,6 @@ void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const
                 float du_9 = du_ptr[stride + stride + 1];
                 float du_10 = du_ptr[2];
                 float du_11 = du_ptr[stride + 2];
-
 
                 float dv_0 = dv_ptr[0];
                 float dv_1 = dv_ptr[1];
@@ -1685,18 +1729,18 @@ void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const
             if(odd_col)
             {
                 sigma_u = dpsis_horiz_ptr[-1]*du_ptr[-1] + dpsis_horiz_ptr[0]*du_ptr[1];
-                sigma_v = dpsis_horiz_ptr[-1]*dv_ptr[-1] + dpsis_horiz_ptr[0]*du_ptr[1];
+                sigma_v = dpsis_horiz_ptr[-1]*dv_ptr[-1] + dpsis_horiz_ptr[0]*dv_ptr[1];
                 sigma_u += dpsis_vert_ptr[0]*du_ptr[stride] + dpsis_vert_ptr[stride_] * du_ptr[stride_];
-                sigma_v += dpsis_vert_ptr[0]*dv_ptr[stride] + dpsis_vert_ptr[stride_] * du_ptr[stride_];
+                sigma_v += dpsis_vert_ptr[0]*dv_ptr[stride] + dpsis_vert_ptr[stride_] * dv_ptr[stride_];
                 B1 = b1_ptr[0]+sigma_u;
                 B2 = b2_ptr[0]+sigma_v;
                 du_ptr[0] += omega*( A11_ptr[0]*B1 + A12_ptr[0]*B2 - du_ptr[0] );
                 dv_ptr[0] += omega*( A12_ptr[0]*B1 + A22_ptr[0]*B2 - dv_ptr[0] );
 
                 sigma_u = dpsis_horiz_ptr[stride - 1]*du_ptr[stride - 1] + dpsis_horiz_ptr[stride]*du_ptr[stride + 1];
-                sigma_v = dpsis_horiz_ptr[stride - 1]*du_ptr[stride - 1] + dpsis_horiz_ptr[stride]*dv_ptr[stride + 1];
+                sigma_v = dpsis_horiz_ptr[stride - 1]*dv_ptr[stride - 1] + dpsis_horiz_ptr[stride]*dv_ptr[stride + 1];
                 sigma_u += dpsis_vert_ptr[stride]*du_ptr[stride + stride] + dpsis_vert_ptr[0] * du_ptr[0];
-                sigma_v += dpsis_vert_ptr[stride]*dv_ptr[stride + stride] + dpsis_vert_ptr[0] * du_ptr[0];
+                sigma_v += dpsis_vert_ptr[stride]*dv_ptr[stride + stride] + dpsis_vert_ptr[0] * dv_ptr[0];
                 B1 = b1_ptr[stride]+sigma_u;
                 B2 = b2_ptr[stride]+sigma_v;
                 du_ptr[stride] += omega*( A11_ptr[stride]*B1 + A12_ptr[stride]*B2 - du_ptr[stride] );
@@ -1713,16 +1757,16 @@ void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const
             sigma_u = dpsis_horiz_ptr[-1]*du_ptr[-1];
             sigma_v = dpsis_horiz_ptr[-1]*dv_ptr[-1];
             sigma_u += dpsis_vert_ptr[0]*du_ptr[stride] + dpsis_vert_ptr[stride_] * du_ptr[stride_];
-            sigma_v += dpsis_vert_ptr[0]*dv_ptr[stride] + dpsis_vert_ptr[stride_] * du_ptr[stride_];
+            sigma_v += dpsis_vert_ptr[0]*dv_ptr[stride] + dpsis_vert_ptr[stride_] * dv_ptr[stride_];
             B1 = b1_ptr[0]+sigma_u;
             B2 = b2_ptr[0]+sigma_v;
             du_ptr[0] += omega*( A11_ptr[0]*B1 + A12_ptr[0]*B2 - du_ptr[0] );
             dv_ptr[0] += omega*( A12_ptr[0]*B1 + A22_ptr[0]*B2 - dv_ptr[0] );
 
             sigma_u = dpsis_horiz_ptr[stride - 1]*du_ptr[stride - 1] + dpsis_horiz_ptr[stride]*du_ptr[stride + 1];
-            sigma_v = dpsis_horiz_ptr[stride - 1]*du_ptr[stride - 1] + dpsis_horiz_ptr[stride]*dv_ptr[stride + 1];
+            sigma_v = dpsis_horiz_ptr[stride - 1]*dv_ptr[stride - 1] + dpsis_horiz_ptr[stride]*dv_ptr[stride + 1];
             sigma_u += dpsis_vert_ptr[stride]*du_ptr[stride + stride] + dpsis_vert_ptr[0] * du_ptr[0];
-            sigma_v += dpsis_vert_ptr[stride]*dv_ptr[stride + stride] + dpsis_vert_ptr[0] * du_ptr[0];
+            sigma_v += dpsis_vert_ptr[stride]*dv_ptr[stride + stride] + dpsis_vert_ptr[0] * dv_ptr[0];
             B1 = b1_ptr[stride]+sigma_u;
             B2 = b2_ptr[stride]+sigma_v;
             du_ptr[stride] += omega*( A11_ptr[stride]*B1 + A12_ptr[stride]*B2 - du_ptr[stride] );
@@ -1744,7 +1788,7 @@ void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const
             // left
             sigma_u = dpsis_horiz_ptr[0] * du_ptr[1];
             sigma_v = dpsis_horiz_ptr[0] * dv_ptr[1];
-            sigma_u += dpsis_vert_ptr[stride_] * dv_ptr[stride_];
+            sigma_u += dpsis_vert_ptr[stride_] * du_ptr[stride_];
             sigma_v += dpsis_vert_ptr[stride_] * dv_ptr[stride_];
 
             if (k == 2) {
@@ -1772,7 +1816,7 @@ void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const
             for (i = 1; i < du->width - 1; ++i) {
                 sigma_u = dpsis_horiz_ptr[-1] * du_ptr[-1] + dpsis_horiz_ptr[0] * du_ptr[1];
                 sigma_v = dpsis_horiz_ptr[-1] * dv_ptr[-1] + dpsis_horiz_ptr[0] * dv_ptr[1];
-                sigma_u += dpsis_vert_ptr[stride_] * dv_ptr[stride_];
+                sigma_u += dpsis_vert_ptr[stride_] * du_ptr[stride_];
                 sigma_v += dpsis_vert_ptr[stride_] * dv_ptr[stride_];
 
                 if (k == 2) {
@@ -1800,7 +1844,7 @@ void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const
             // right
             sigma_u = dpsis_horiz_ptr[-1] * du_ptr[-1];
             sigma_v = dpsis_horiz_ptr[-1] * dv_ptr[-1];
-            sigma_u += dpsis_vert_ptr[stride_] * dv_ptr[stride_];
+            sigma_u += dpsis_vert_ptr[stride_] * du_ptr[stride_];
             sigma_v += dpsis_vert_ptr[stride_] * dv_ptr[stride_];
 
             if (k == 2) {
@@ -1814,11 +1858,16 @@ void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const
             dv_ptr[0] += omega * (A12_ptr[0] * B1 + A22_ptr[0] * B2 - dv_ptr[0]);
 
             //send the pointer to next line
-            dpsis_horiz_ptr += new_line_incr;
-            dpsis_vert_ptr += new_line_incr;
+
+            du_ptr += new_line_incr;
+            dv_ptr += new_line_incr;
             A11_ptr += new_line_incr;
             A12_ptr += new_line_incr;
             A22_ptr += new_line_incr;
+            b1_ptr += new_line_incr;
+            b2_ptr += new_line_incr;
+            dpsis_horiz_ptr += new_line_incr;
+            dpsis_vert_ptr += new_line_incr;
             //count++;
 
         }
@@ -1831,11 +1880,14 @@ void sor_coupled_blocked_2x2(image_t *du, image_t *dv, const image_t *a11, const
 //        }
 
     }
-
+    memcpy(a11_out->data, A11->data, A11->stride*A11->height*sizeof(float));
+    memcpy(a12_out->data, A12->data, A12->stride*A12->height*sizeof(float));
+    memcpy(a22_out->data, A22->data, A22->stride*A22->height*sizeof(float));
+    image_delete(A11); image_delete(A12); image_delete(A22);
 
 }
 
-void sor_coupled_blocked_2x2_vectorization(image_t *du, image_t *dv, const image_t *a11, const image_t *a12, const image_t *a22, const image_t *b1, const image_t *b2, const image_t *dpsis_horiz, const image_t *dpsis_vert, int iterations, float omega)
+void sor_coupled_blocked_2x2_vectorization(image_t *du, image_t *dv, image_t *a11_out, image_t *a12_out, image_t* a22_out, const image_t *a11, const image_t *a12, const image_t *a22, const image_t *b1, const image_t *b2, const image_t *dpsis_horiz, const image_t *dpsis_vert, int iterations, float omega)
 {
     // Fall back to standard solver in case of trivial cases
     if(du->width < 2 || du->height < 2 || iterations < 1)
@@ -1847,9 +1899,9 @@ void sor_coupled_blocked_2x2_vectorization(image_t *du, image_t *dv, const image
     int i, j, iter;
     int stride = du->stride;
     int stride_ = -stride;
-    int stride_1 = stride_ + 1;
-    int stride_2 = stride_ + 2;
-    int stride_3 = stride_ + 3;
+    //int stride_1 = stride_ + 1;
+    //int stride_2 = stride_ + 2;
+    //int stride_3 = stride_ + 3;
 
 
 
@@ -1867,7 +1919,7 @@ void sor_coupled_blocked_2x2_vectorization(image_t *du, image_t *dv, const image
 
 
     float sum_dpsis, sigma_u, sigma_v, B1, B2, det;
-    float sum_dpsis_1, sum_dpsis_2, sum_dpsis_3, sum_dpsis_4;
+    float sum_dpsis_1; // sum_dpsis_2, sum_dpsis_3, sum_dpsis_4;
     // float sigma_u_1, sigma_u_2, sigma_u_3, sigma_u_4;
     // float sigma_v_1, sigma_v_2, sigma_v_3, sigma_v_4;
 
@@ -1883,12 +1935,11 @@ void sor_coupled_blocked_2x2_vectorization(image_t *du, image_t *dv, const image
 
     int new_line_incr = du->stride - du->width + 1;
 
-    float A11_1, A11_2, A11_3, A11_4, A11_;
-    float A12_1, A12_2, A12_3, A12_4, A12_;
-    float A22_1, A22_2, A22_3, A22_4, A22_;
+    float A11_;
+    float A12_;
+    float A22_;
 
     // variables for SSE operations
-
     __m128 dpsis_horiz_pl, dpsis_horiz_pr, dpsis_vert_pu, dpsis_vert_pl;
     __m128 sum_dpsis_p;
     __m128 A11_p, A12_p, A22_p;
@@ -2388,6 +2439,9 @@ void sor_coupled_blocked_2x2_vectorization(image_t *du, image_t *dv, const image
         }
     }
 
-
+    memcpy(a11_out->data, A11->data, A11->stride*A11->height*sizeof(float));
+    memcpy(a12_out->data, A12->data, A12->stride*A12->height*sizeof(float));
+    memcpy(a22_out->data, A22->data, A22->stride*A22->height*sizeof(float));
+    image_delete(A11); image_delete(A12); image_delete(A22);
 }
 

@@ -6,13 +6,30 @@
 #include "opticalflow_aux.h"
 #include "solver.h"
 #include "image.h"
-
+#include <stdbool.h>
 #ifdef __APPLE__
 	#include <malloc/malloc.h>
 #else
 	#include <malloc.h>
 #endif
 
+#define BRK()  do { printf("%s %d\n", __FILE__, __LINE__); getchar(); } while (0)
+
+
+bool check_image_equal(const image_t* img1, const image_t* img2)
+{
+    if(img1->width != img2->width || img1->height != img2->height)
+        return false;
+
+    int height = img1->height, width = img1->width, stride = img1->stride;
+
+    for(int j = 0; j < height; ++j)
+        for(int i = 0; i < width; ++i)
+            if(abs(img1->data[j*stride+i] - img2->data[j*stride+i]) > 1e-10)
+                return false;
+
+    return true;
+}
 
 
 convolution_t *deriv, *deriv_flow;
@@ -53,8 +70,24 @@ void compute_one_level(image_t *wx, image_t *wy, color_image_t *im1, color_image
       compute_data_and_match(a11, a12, a22, b1, b2, mask, wx, wy, du, dv, uu, vv, Ix, Iy, Iz, Ixx, Ixy, Iyy, Ixz, Iyz, desc_weight, desc_flow_x, desc_flow_y, half_delta_over3, half_beta, half_gamma_over3);
       sub_laplacian(b1, wx, smooth_horiz, smooth_vert);
       sub_laplacian(b2, wy, smooth_horiz, smooth_vert);
-      
-	  // Successive over-relaxation for linear system
+
+
+        image_t *du_2, *dv_2, *a11_2, *a12_2, *a22_2, *b1_2, *b2_2, *smooth_horiz_2, *smooth_vert_2;
+        image_t *a11_o, *a12_o, *a22_o, *a11_o_2, *a12_o_2, *a22_o_2;
+
+        a11_o = image_new(du->width, du->height);
+        a12_o = image_new(du->width, du->height);
+        a22_o = image_new(du->width, du->height);
+        a11_o_2 = image_new(du->width, du->height);
+        a12_o_2 = image_new(du->width, du->height);
+        a22_o_2 = image_new(du->width, du->height);
+
+        du_2 = image_cpy(du); dv_2 = image_cpy(dv);
+        a11_2 = image_cpy(a11); a12_2 = image_cpy(a12); a22_2 = image_cpy(a22);
+        b1_2 = image_cpy(b1); b2_2 = image_cpy(b2);
+        smooth_horiz_2 = image_cpy(smooth_horiz); smooth_vert_2 = image_cpy(smooth_vert);
+
+        // Successive over-relaxation for linear system
       // sor_coupled_slow_but_readable(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
 	  
 	  // Precompute index
@@ -63,17 +96,41 @@ void compute_one_level(image_t *wx, image_t *wy, color_image_t *im1, color_image
 	  // Precompute index + scalar replacement
 	  // sor_coupled_slow_scalar_replacement(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
       
-	  // blocked SOR
-      // sor_coupled(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
+        // blocked SOR
+        sor_coupled(du, dv, a11_o, a12_o, a22_o, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
 
-      // blocked SOR with 4 elements each row
-      // sor_coupled_blocked_1x4(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
+        // blocked SOR with 4 elements each row
+        //sor_coupled_blocked_1x4(du_2, dv_2, a11_o_2, a12_o_2, a22_o_2, a11_2, a12_2, a22_2, b1_2, b2_2, smooth_horiz_2, smooth_vert_2, params->n_solver_iteration, params->sor_omega);
 
       // blocked SOR with 2x2 mini blocks
-      // sor_coupled_blocked_2x2(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
+        sor_coupled_blocked_2x2(du_2, dv_2, a11_o_2, a12_o_2, a22_o_2, a11_2, a12_2, a22_2, b1_2, b2_2, smooth_horiz_2, smooth_vert_2, params->n_solver_iteration, params->sor_omega);
 
       // blocked SOR with vectorization
-      sor_coupled_blocked_2x2_vectorization(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
+      // sor_coupled_blocked_2x2_vectorization(du, dv, a11_o_2, a12_o_2, a22_o_2, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
+        if(!check_image_equal(a11_o, a11_o_2))
+        {
+            printf("a11_o. width %d, height %d\n", du->width, du->height);
+            BRK();
+        }
+
+        if(!check_image_equal(a12_o, a12_o_2))
+        {
+            printf("a12_o. width %d, height %d\n", du->width, du->height);
+            BRK();
+        }
+
+        if(!check_image_equal(a22_o, a22_o_2))
+        {
+            printf("a22_o. width %d, height %d\n", du->width, du->height);
+            BRK();
+        }
+
+
+        if(!check_image_equal(du, du_2) || !check_image_equal(dv, dv_2))
+        {
+            printf("second check failed. width %d, height %d\n", du->width, du->height);
+            BRK();
+        }
 
       // update flow plus flow increment
       int i;
