@@ -6,13 +6,30 @@
 #include "opticalflow_aux.h"
 #include "solver.h"
 #include "image.h"
-
+#include <stdbool.h>
 #ifdef __APPLE__
 	#include <malloc/malloc.h>
 #else
 	#include <malloc.h>
 #endif
 
+#define BRK()  do { printf("%s %d\n", __FILE__, __LINE__); getchar(); } while (0)
+
+
+bool check_image_equal(const image_t* img1, const image_t* img2)
+{
+    if(img1->width != img2->width || img1->height != img2->height)
+        return false;
+
+    int height = img1->height, width = img1->width;
+
+    for(int j = 0; j < height; ++j)
+        for(int i = 0; i < width; ++i)
+            if(abs(img1->data[(j-1)*width+i] - img2->data[(j-1)*width+i]) > 0.00001)
+                return false;
+
+    return true;
+}
 
 
 convolution_t *deriv, *deriv_flow;
@@ -53,8 +70,13 @@ void compute_one_level(image_t *wx, image_t *wy, color_image_t *im1, color_image
       compute_data_and_match(a11, a12, a22, b1, b2, mask, wx, wy, du, dv, uu, vv, Ix, Iy, Iz, Ixx, Ixy, Iyy, Ixz, Iyz, desc_weight, desc_flow_x, desc_flow_y, half_delta_over3, half_beta, half_gamma_over3);
       sub_laplacian(b1, wx, smooth_horiz, smooth_vert);
       sub_laplacian(b2, wy, smooth_horiz, smooth_vert);
-      
-	  // Successive over-relaxation for linear system
+
+
+        image_t *du_2, *dv_2;
+
+        du_2 = image_cpy(du); dv_2 = image_cpy(dv);
+
+        // Successive over-relaxation for linear system
       // sor_coupled_slow_but_readable(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
 	  
 	  // Precompute index
@@ -64,13 +86,19 @@ void compute_one_level(image_t *wx, image_t *wy, color_image_t *im1, color_image
 	  // sor_coupled_slow_scalar_replacement(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
       
 	  // blocked SOR
-       sor_coupled(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
+	  sor_coupled(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
 
       // blocked SOR with 4 elements each row
-      // sor_coupled_blocked_1x4(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
+      sor_coupled_blocked_1x4(du_2, dv_2, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
 
+
+        if(!check_image_equal(du, du_2) || !check_image_equal(dv, dv_2))
+        {
+            printf("width %d, height %d\n", du->width, du->height);
+            BRK();
+        }
       // blocked SOR with 2x2 mini blocks
-      // sor_coupled_blocked_2x2(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
+      //sor_coupled_blocked_2x2(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
 
       // blocked SOR with vectorization
       // sor_coupled_blocked_2x2_vectorization(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
