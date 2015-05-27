@@ -5,7 +5,6 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c1x -Wall -g -O3")
 
-
 set(SYS_INCDIR "/opt/local/include")
 set(SYS_LIBDIR "/opt/local/lib")
 
