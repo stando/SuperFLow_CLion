@@ -293,10 +293,10 @@ int main(int argc, char ** argv)
     
     
 	// Start timing function here!
-	double perf = 0;
+	//double perf = 0;
 	int test_iters = 1;
 	int num_tests = 1;
-	perf = perf_test(optical_flow, "Optical FLow", &tparams, test_iters, num_tests);
+	perf_test(optical_flow, "Optical FLow", &tparams, test_iters, num_tests);
 	
 	//optical_flow(wx, wy, im1, im2, params, match_x, match_y, match_z);
   // End timning function here!
