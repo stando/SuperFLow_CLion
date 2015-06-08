@@ -82,8 +82,8 @@ void compute_one_level(image_t *wx, image_t *wy, color_image_t *im1, color_image
 	    // Precompute index
         // sor_coupled_slow_precompute_index(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
       
-	  // Precompute index + scalar replacement
-	  // sor_coupled_slow_scalar_replacement(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
+	    // Precompute index + scalar replacement
+	    // sor_coupled_slow_scalar_replacement(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
 
         // blocked SOR
         // sor_coupled(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
@@ -95,7 +95,10 @@ void compute_one_level(image_t *wx, image_t *wy, color_image_t *im1, color_image
         sor_coupled_blocked_2x2(du_2, dv_2, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
 
         // blocked SOR with vectorization
-        //sor_coupled_blocked_2x2_vectorization(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
+        // sor_coupled_blocked_2x2_vectorization(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
+
+        // blocked SOR with 2x2 mini blocks
+        // sor_coupled_blocked_4x4(du, dv, a11, a12, a22, b1, b2, smooth_horiz, smooth_vert, params->n_solver_iteration, params->sor_omega);
 
 //        if(!check_image_equal(du, du_2) || !check_image_equal(dv, dv_2))
 //        {
